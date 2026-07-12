@@ -1,9 +1,20 @@
 """
-Taggerchi Bot — bitta faylda: Telegram bot + SQLite baza + Flask dashboard.
+Taggerchi Bot — bitta faylda: Telegram bot (buyruqlar) + Userbot (Telethon, real
+akkaunt nomidan tag qilish) + SQLite baza + Flask dashboard.
+
+MUHIM: Tag xabarlari endi BOT nomidan emas, balki sizning shaxsiy Telegram
+akkauntingiz (userbot) nomidan yuboriladi. Buning uchun avval bir marta
+`telethon_login.py` skriptini ishga tushirib SESSION STRING olishingiz kerak.
 
 Ishga tushirish:
-    pip install Flask pyTelegramBotAPI
-    export BOT_TOKEN="123456:AA...."
+    pip install Flask pyTelegramBotAPI telethon python-dotenv
+
+    # 1) Avval (faqat bir marta) userbot sessiyasini yarating:
+    python telethon_login.py
+
+    # 2) .env faylini to'ldiring (pastdagi SOZLAMALAR bo'limiga qarang)
+
+    # 3) Botni ishga tushiring:
     python app.py
 """
 
@@ -12,6 +23,7 @@ import time
 import html
 import random
 import sqlite3
+import asyncio
 import threading
 from functools import wraps
 from datetime import datetime, timezone
@@ -27,6 +39,10 @@ from telebot import types
 from telebot.apihelper import ApiTelegramException
 from flask import Flask, request, Response
 
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+from telethon.errors import FloodWaitError, ChatWriteForbiddenError
+
 # ============================================================
 # SOZLAMALAR (env orqali o'zgartiriladi)
 # ============================================================
@@ -38,15 +54,23 @@ PORT = int(os.getenv("PORT", "5000"))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "5"))
 
 # Pro sozlamalar
-TAGGER_COOLDOWN_SECONDS = int(os.getenv("TAGGER_COOLDOWN_SECONDS", "0"))
-# Agar guruhdagi tanish userlar shundan ko'p bo'lsa, individual jo'natish
-# o'rniga (flood-limitga tushib qolmaslik uchun) guruhlab jo'natishga o'tadi
+TAGGER_COOLDOWN_SECONDS = int(os.getenv("TAGGER_COOLDOWN_SECONDS", "30"))
 MAX_INDIVIDUAL_TAG = int(os.getenv("MAX_INDIVIDUAL_TAG", "40"))
-INDIVIDUAL_SEND_DELAY = float(os.getenv("INDIVIDUAL_SEND_DELAY", "0.35"))
-CHUNK_SEND_DELAY = float(os.getenv("CHUNK_SEND_DELAY", "0.5"))
+INDIVIDUAL_SEND_DELAY = float(os.getenv("INDIVIDUAL_SEND_DELAY", "0.6"))
+CHUNK_SEND_DELAY = float(os.getenv("CHUNK_SEND_DELAY", "1.0"))
+
+# ---------- Userbot (Telethon) sozlamalari ----------
+# TG_API_ID / TG_API_HASH -> https://my.telegram.org dan olinadi
+# TG_SESSION_STRING -> telethon_login.py skripti orqali bir marta generatsiya qilinadi
+TG_API_ID = int(os.getenv("TG_API_ID", "0"))
+TG_API_HASH = os.getenv("TG_API_HASH", "")
+TG_SESSION_STRING = os.getenv("TG_SESSION_STRING", "")
 
 if not BOT_TOKEN:
     print("OGOHLANTIRISH: BOT_TOKEN environment variable o'rnatilmagan!")
+if not (TG_API_ID and TG_API_HASH and TG_SESSION_STRING):
+    print("OGOHLANTIRISH: TG_API_ID / TG_API_HASH / TG_SESSION_STRING to'liq emas — "
+          "userbot orqali tag qilish ishlamaydi (telethon_login.py ni ishga tushiring).")
 
 # ============================================================
 # BAZA (SQLite, thread-safe)
@@ -89,6 +113,7 @@ def init_db():
             chat_id INTEGER,
             triggered_by TEXT,
             users_tagged INTEGER,
+            source TEXT DEFAULT 'userbot',
             created_at TEXT
         );
         """
@@ -143,7 +168,8 @@ def upsert_user(chat_id, user_id, username, first_name):
     conn.commit()
 
 
-def get_group_users(chat_id):
+def get_group_users_from_db(chat_id):
+    """Zaxira variant: faqat botga yozgan (DB'da bor) userlar."""
     conn = get_conn()
     rows = conn.execute(
         "SELECT user_id, username, first_name FROM users WHERE chat_id = ? ORDER BY first_name",
@@ -180,11 +206,11 @@ def get_stats():
     }
 
 
-def log_tagger_use(chat_id, triggered_by, users_tagged):
+def log_tagger_use(chat_id, triggered_by, users_tagged, source="userbot"):
     conn = get_conn()
     conn.execute(
-        "INSERT INTO tagger_logs (chat_id, triggered_by, users_tagged, created_at) VALUES (?, ?, ?, ?)",
-        (chat_id, triggered_by, users_tagged, now()),
+        "INSERT INTO tagger_logs (chat_id, triggered_by, users_tagged, source, created_at) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, triggered_by, users_tagged, source, now()),
     )
     conn.commit()
 
@@ -193,7 +219,7 @@ def get_recent_logs(limit=30):
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT l.created_at, l.triggered_by, l.users_tagged, g.title, l.chat_id
+        SELECT l.created_at, l.triggered_by, l.users_tagged, l.source, g.title, l.chat_id
         FROM tagger_logs l
         LEFT JOIN groups g ON g.chat_id = l.chat_id
         ORDER BY l.id DESC
@@ -205,7 +231,93 @@ def get_recent_logs(limit=30):
 
 
 # ============================================================
-# TELEGRAM BOT
+# USERBOT (Telethon) — shaxsiy akkaunt nomidan ishlaydi
+# ============================================================
+_userbot_loop = None
+_userbot_client = None
+_userbot_ready = threading.Event()
+_userbot_me = {}
+
+
+def _userbot_thread_main():
+    global _userbot_loop, _userbot_client
+    _userbot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_userbot_loop)
+    _userbot_client = TelegramClient(
+        StringSession(TG_SESSION_STRING), TG_API_ID, TG_API_HASH, loop=_userbot_loop
+    )
+
+    async def _start():
+        await _userbot_client.start()
+        me = await _userbot_client.get_me()
+        _userbot_me["id"] = me.id
+        _userbot_me["name"] = f"{me.first_name or ''} (@{me.username})" if me.username else (me.first_name or "")
+        print(f"✅ Userbot ulandi: {_userbot_me['name']}")
+
+    _userbot_loop.run_until_complete(_start())
+    _userbot_ready.set()
+    _userbot_loop.run_forever()
+
+
+def start_userbot():
+    """Userbotni alohida threadda, o'zining asyncio event loopi bilan ishga tushiradi."""
+    if not (TG_API_ID and TG_API_HASH and TG_SESSION_STRING):
+        print("Userbot ishga tushmadi: TG_API_ID/TG_API_HASH/TG_SESSION_STRING yo'q.")
+        return
+    t = threading.Thread(target=_userbot_thread_main, daemon=True)
+    t.start()
+    _userbot_ready.wait(timeout=30)
+
+
+def _run_on_userbot(coro, timeout=60):
+    """Sync kod ichidan userbot event loopiga coroutine yuboradi va natijani kutadi."""
+    if not _userbot_client or not _userbot_loop:
+        raise RuntimeError("Userbot ulanmagan. TG_API_ID/TG_API_HASH/TG_SESSION_STRING tekshiring.")
+    future = asyncio.run_coroutine_threadsafe(coro, _userbot_loop)
+    return future.result(timeout=timeout)
+
+
+async def _fetch_participants(chat_id):
+    users = []
+    async for p in _userbot_client.iter_participants(chat_id):
+        if p.bot or p.id == _userbot_me.get("id"):
+            continue
+        users.append({
+            "user_id": p.id,
+            "username": p.username,
+            "first_name": p.first_name or "Foydalanuvchi",
+        })
+    return users
+
+
+def get_group_users_live(chat_id):
+    """Guruh a'zolarini real-time, userbot orqali (to'liq ro'yxat) oladi."""
+    return _run_on_userbot(_fetch_participants(chat_id))
+
+
+async def _send_as_user(chat_id, text):
+    for attempt in range(3):
+        try:
+            return await _userbot_client.send_message(chat_id, text, parse_mode="html")
+        except FloodWaitError as e:
+            wait_s = e.seconds + 1
+            print(f"⏳ Userbot flood-limit: {wait_s}s kutamiz...")
+            await asyncio.sleep(wait_s)
+        except ChatWriteForbiddenError:
+            print("Userbot bu guruhda yoza olmaydi (yozish taqiqlangan yoki a'zo emas).")
+            return None
+        except Exception as e:
+            print(f"Userbot xabar yuborishda xatolik: {e}")
+            return None
+    return None
+
+
+def userbot_send(chat_id, text):
+    return _run_on_userbot(_send_as_user(chat_id, text))
+
+
+# ============================================================
+# TELEGRAM BOT (faqat buyruqlarni qabul qilish + boshqaruv uchun)
 # ============================================================
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML") if BOT_TOKEN else None
 BOT_USERNAME = None  # run_bot() ichida bot.get_me() orqali to'ldiriladi
@@ -260,7 +372,7 @@ FUNNY_INTROS = [
 
 
 def safe_send(chat_id, text, **kwargs):
-    """Flood-limit (429) va boshqa Telegram xatolarini boshqarib xabar yuboradi."""
+    """Bot orqali (masalan xatolik/ogohlantirish xabarlari uchun) flood-safe yuborish."""
     for attempt in range(3):
         try:
             return bot.send_message(chat_id, text, parse_mode="HTML", **kwargs)
@@ -291,8 +403,6 @@ def handle_tagger(message):
     text = message.text or ""
     parts = text.split(maxsplit=1)
 
-    # Foydalanuvchi yozgan qo'shimcha matn (kod bo'lsa ham) — HTML-safe qilib escape qilamiz,
-    # shu tufayli ichida <, >, & bo'lsa ham Telegram "can't parse entities" xatosi bermaydi
     extra_text = None
     if len(parts) > 1 and parts[1].strip():
         extra_text = html.escape(parts[1].strip())
@@ -309,54 +419,66 @@ def handle_tagger(message):
         return
     _last_tagger_use[chat_id] = time.time()
 
-    users = get_group_users(chat_id)
-    if not users:
-        bot.reply_to(
-            message,
-            "Hali botga tanish foydalanuvchi yo'q ⚠️\n"
-            "Bot faqat guruhda xabar yozgan (yoki sync_members.py orqali import qilingan) "
-            "userlarni tag qila oladi. Odamlar birrov guruhga xabar yozsin, keyin /tagger ishlaydi.",
-        )
-        return
-
+    # ---------- A'zolar ro'yxatini userbot orqali REAL-TIME olish ----------
+    users = []
+    source = "userbot"
     try:
         bot.send_chat_action(chat_id, "typing")
     except Exception:
         pass
 
+    try:
+        users = get_group_users_live(chat_id)
+    except Exception as e:
+        print(f"Userbot orqali a'zolarni olishda xatolik: {e}")
+        bot.reply_to(
+            message,
+            "⚠️ Userbot orqali guruh a'zolarini olib bo'lmadi.\n"
+            "Tekshiring: 1) userbot akkaunt shu guruhga qo'shilganmi? "
+            "2) TG_API_ID / TG_API_HASH / TG_SESSION_STRING to'g'rimi?\n\n"
+            "Hozircha faqat botga avval yozgan userlar orqali davom etamiz...",
+        )
+        users = get_group_users_from_db(chat_id)
+        source = "db_fallback"
+
+    if not users:
+        bot.reply_to(
+            message,
+            "Hech kimni tag qilib bo'lmadi ⚠️\n"
+            "Guruhda hali hech qanday (bot yoki adminlardan tashqari) a'zo topilmadi.",
+        )
+        return
+
     total_tagged = 0
 
     if extra_text:
-        # ---------- Matn bilan: 5 tadan guruhlab, chiroyli intro bilan ----------
         for chunk in chunk_list(users, CHUNK_SIZE):
             mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
             intro = random.choice(FUNNY_INTROS)
             msg_text = f"{intro}\n\n{mentions}\n\n💬 <i>{extra_text}</i>"
-            if safe_send(chat_id, msg_text):
+            if userbot_send(chat_id, msg_text):
                 total_tagged += len(chunk)
             time.sleep(CHUNK_SEND_DELAY)
 
     elif len(users) <= MAX_INDIVIDUAL_TAG:
-        # ---------- Matnsiz, kam odamli guruh: har biriga alohida, qiziqarli gap bilan ----------
         for u in users:
             phrase = random.choice(FUNNY_TAG_PHRASES)
             msg_text = f"{mention_html(u)}, {phrase}"
-            if safe_send(chat_id, msg_text):
+            if userbot_send(chat_id, msg_text):
                 total_tagged += 1
             time.sleep(INDIVIDUAL_SEND_DELAY)
 
     else:
-        # ---------- Juda katta guruh: flood-limitga tushmaslik uchun guruhlab yuboramiz ----------
         for chunk in chunk_list(users, CHUNK_SIZE):
             mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
             phrase = random.choice(FUNNY_TAG_PHRASES)
             msg_text = f"📢 Hammaga chaqiruv!\n\n{mentions}\n\n<i>({phrase})</i>"
-            if safe_send(chat_id, msg_text):
+            if userbot_send(chat_id, msg_text):
                 total_tagged += len(chunk)
             time.sleep(CHUNK_SEND_DELAY)
 
     triggered_by = f"@{message.from_user.username}" if message.from_user.username else str(message.from_user.id)
-    log_tagger_use(chat_id, triggered_by, total_tagged)
+    log_tagger_use(chat_id, triggered_by, total_tagged, source=source)
 
 
 def setup_bot_handlers():
@@ -368,10 +490,10 @@ def setup_bot_handlers():
         text = (
             f"Assalomu alaykum, <b>{name}</b>! 👋\n\n"
             f"Men <b>Taggerchi</b> botman 🏷️ — guruhlarda barcha a'zolarni bir zumda "
-            f"chaqirib chiqaman.\n\n"
+            f"chaqirib chiqaman (tag xabarlari shaxsiy akkaunt nomidan yuboriladi).\n\n"
             f"⚙️ <b>Qanday ishlayman:</b>\n"
-            f"• <code>/tagger</code> — guruhdagi tanish userlarni 5 tadan chaqiraman\n"
-            f"• <code>/tagger matningiz</code> — har bir 5 kishilik chaqiruvga matningizni ham qo'shaman\n\n"
+            f"• <code>/tagger</code> — guruhdagi barcha a'zolarni 5 tadan chaqiraman\n"
+            f"• <code>/tagger matningiz</code> — har bir chaqiruvga matningizni ham qo'shaman\n\n"
             f"Boshlash uchun meni guruhingizga qo'shing 👇"
         )
         markup = types.InlineKeyboardMarkup(row_width=1)
@@ -380,22 +502,20 @@ def setup_bot_handlers():
         markup.add(types.InlineKeyboardButton("ℹ️ Qanday ishlataman?", callback_data="help"))
         bot.send_message(message.chat.id, text, reply_markup=markup)
 
-    # ---------- Inline tugmalar ----------
     @bot.callback_query_handler(func=lambda call: call.data == "help")
     def on_help_callback(call):
         text = (
             "📖 <b>Qo'llanma</b>\n\n"
-            "1️⃣ Meni guruhingizga qo'shing\n"
-            "2️⃣ Ishlashim uchun meni <b>admin</b> qiling (Group Privacy o'chirilgan bo'lishi kerak)\n"
-            "3️⃣ Guruh a'zolari bir marta xabar yozsin — shundagina men ularni \"tanib\" olaman\n"
-            "4️⃣ <code>/tagger</code> yoki <code>/tagger salom hammaga</code> deb yozing 🚀\n\n"
-            "Telegram qoidasiga ko'ra hech qanday bot guruhning to'liq a'zolar ro'yxatini "
-            "ololmaydi — shuning uchun faqat yozgan userlarni chaqiraman."
+            "1️⃣ Meni (botni) guruhingizga qo'shing — buyruqlarni shu orqali eshitaman\n"
+            "2️⃣ Shaxsiy (userbot) akkauntingiz ham o'sha guruhga a'zo bo'lishi kerak — "
+            "tag xabarlari shu akkaunt nomidan yuboriladi\n"
+            "3️⃣ <code>/tagger</code> yoki <code>/tagger salom hammaga</code> deb yozing 🚀\n\n"
+            "Userbot orqali guruhning TO'LIQ a'zolar ro'yxati olinadi — "
+            "avval yozgan bo'lishlari shart emas."
         )
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, text)
 
-    # ---------- Bot guruhga qo'shilishi / chiqarilishi / admin bo'lishi ----------
     @bot.my_chat_member_handler()
     def on_bot_membership_change(update: types.ChatMemberUpdated):
         chat = update.chat
@@ -416,21 +536,14 @@ def setup_bot_handlers():
                 text = (
                     "Assalomu alaykum, guruh a'zolari! 👋🏷️\n\n"
                     "Men <b>Taggerchi</b> botman — <code>/tagger</code> buyrug'i orqali "
-                    "hammani chaqirib beraman.\n\n"
-                    "⚠️ To'liq ishlashim uchun meni <b>admin</b> qilib qo'ying — "
-                    "shunda tayyor ekanligimni aytaman ✅"
+                    "hammani chaqirib beraman (tag xabarlari alohida shaxsiy akkaunt nomidan keladi).\n\n"
+                    "⚠️ Ishlashim uchun bog'langan userbot akkaunt ham shu guruhga a'zo bo'lishi kerak."
                 )
-                if new_status == "administrator":
-                    text += "\n\n🎉 Men allaqachon adminman — ishlashga tayyorman! /tagger deb yozing."
                 bot.send_message(chat.id, text)
             elif became_admin:
-                bot.send_message(
-                    chat.id,
-                    "✅ Rahmat! Endi men adminman va to'liq ishlashga tayyorman 🚀\n"
-                    "Sinab ko'ring: <code>/tagger</code>",
-                )
+                bot.send_message(chat.id, "✅ Rahmat! Endi to'liq ishlashga tayyorman 🚀")
             elif got_kicked:
-                pass  # guruhdan chiqarilganda xabar yuborib bo'lmaydi
+                pass
         except Exception as e:
             print(f"Salomlashish xabarida xatolik: {e}")
 
@@ -478,7 +591,7 @@ def run_bot():
 
 
 # ============================================================
-# FLASK DASHBOARD (HTML shu faylning ichida, template sifatida)
+# FLASK DASHBOARD
 # ============================================================
 app = Flask(__name__)
 
@@ -496,6 +609,8 @@ DASHBOARD_HTML = """
   .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.08); }
   .badge-active { background: rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(74,222,128,0.3); }
   .badge-inactive { background: rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(248,113,113,0.3); }
+  .badge-userbot { background: rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(96,165,250,0.3); }
+  .badge-fallback { background: rgba(234,179,8,0.15); color:#facc15; border:1px solid rgba(250,204,21,0.3); }
 </style>
 </head>
 <body class="min-h-screen text-slate-100 font-sans">
@@ -573,6 +688,7 @@ DASHBOARD_HTML = """
               <th class="py-2 pr-4">Guruh</th>
               <th class="py-2 pr-4">Kim chaqirdi</th>
               <th class="py-2 pr-4">Nechta user tag qilindi</th>
+              <th class="py-2 pr-4">Manba</th>
             </tr>
           </thead>
           <tbody>
@@ -582,9 +698,16 @@ DASHBOARD_HTML = """
               <td class="py-2 pr-4">{{ l.title or l.chat_id }}</td>
               <td class="py-2 pr-4">{{ l.triggered_by }}</td>
               <td class="py-2 pr-4">{{ l.users_tagged }}</td>
+              <td class="py-2 pr-4">
+                {% if l.source == 'userbot' %}
+                  <span class="px-2 py-1 rounded-full text-xs badge-userbot">userbot</span>
+                {% else %}
+                  <span class="px-2 py-1 rounded-full text-xs badge-fallback">db fallback</span>
+                {% endif %}
+              </td>
             </tr>
             {% else %}
-            <tr><td colspan="4" class="py-6 text-center text-slate-500">Hali /tagger ishlatilmagan.</td></tr>
+            <tr><td colspan="5" class="py-6 text-center text-slate-500">Hali /tagger ishlatilmagan.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -629,7 +752,11 @@ def dashboard():
 
 @app.route("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "userbot_connected": bool(_userbot_client and _userbot_ready.is_set()),
+        "userbot_account": _userbot_me.get("name"),
+    }
 
 
 # ============================================================
@@ -642,5 +769,6 @@ def start_bot_in_background():
 
 if __name__ == "__main__":
     init_db()
-    start_bot_in_background()
+    start_userbot()          # 1) shaxsiy akkaunt (userbot) ulanadi
+    start_bot_in_background()  # 2) bot buyruqlarni eshita boshlaydi
     app.run(host="0.0.0.0", port=PORT)
