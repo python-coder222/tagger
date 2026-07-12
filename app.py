@@ -25,6 +25,18 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("Muhit o'zgaruvchilarida BOT_TOKEN topilmadi!")
 
+# Global API_ID va API_HASH qiymatlarini olish
+TG_API_ID_RAW = os.environ.get("TG_API_ID")
+TG_API_HASH = os.environ.get("TG_API_HASH")
+
+if not TG_API_ID_RAW or not TG_API_HASH:
+    raise ValueError("Muhit o'zgaruvchilarida TG_API_ID yoki TG_API_HASH topilmadi!")
+
+try:
+    TG_API_ID = int(TG_API_ID_RAW)
+except ValueError:
+    raise ValueError("TG_API_ID faqat raqamlardan iborat bo'lishi kerak!")
+
 # Admin Telegram ID (faqat /accounts buyrug'ini ko'rish uchun)
 try:
     ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
@@ -80,13 +92,11 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Foydalanuvchilarning ulangan Telethon akkountlari
+    # Foydalanuvchilarning ulangan Telethon akkountlari (api_id va api_hash olib tashlandi)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounts (
             telegram_user_id INTEGER PRIMARY KEY,
             phone TEXT,
-            api_id INTEGER,
-            api_hash TEXT,
             session_string TEXT,
             telegram_account_id INTEGER,
             telegram_name TEXT,
@@ -133,15 +143,15 @@ def init_db():
 
 # --- Ma'lumotlar Bazasi Yordamchi Funksiyalari ---
 
-def db_save_account(user_id, phone, api_id, api_hash, session_string, tg_acc_id, tg_name, username):
+def db_save_account(user_id, phone, session_string, tg_acc_id, tg_name, username):
     conn = get_db_connection()
     cursor = conn.cursor()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("""
         INSERT OR REPLACE INTO accounts 
-        (telegram_user_id, phone, api_id, api_hash, session_string, telegram_account_id, telegram_name, username, connected_at, last_used)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, phone, api_id, api_hash, session_string, tg_acc_id, tg_name, username, now_str, now_str))
+        (telegram_user_id, phone, session_string, telegram_account_id, telegram_name, username, connected_at, last_used)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, phone, session_string, tg_acc_id, tg_name, username, now_str, now_str))
     conn.commit()
     conn.close()
 
@@ -234,7 +244,7 @@ def db_get_cooldown(user_id):
 clients = {}
 
 def get_client(user_id):
-    """Foydalanuvchi uchun Telethon klientini keshdan oladi yoki qaytadan yaratadi."""
+    """Foydalanuvchi uchun Telethon klientini keshdan oladi yoki qaytadan yaratadi (global API_ID va API_HASH dan foydalanadi)."""
     if user_id in clients:
         client = clients[user_id]
         try:
@@ -259,8 +269,8 @@ def get_client(user_id):
     if not acc:
         return None
 
-    # StringSession yordamida klient ob'ektini yaratish
-    client = TelegramClient(StringSession(acc['session_string']), acc['api_id'], acc['api_hash'])
+    # StringSession va global API hisoblari yordamida klient ob'ektini yaratish
+    client = TelegramClient(StringSession(acc['session_string']), TG_API_ID, TG_API_HASH)
     
     async def connect_and_validate():
         await client.connect()
@@ -308,7 +318,7 @@ def handle_start(message):
 def handle_help(message):
     help_text = (
         "📖 **Tizim qoidalari va cheklovlar**\n\n"
-        "1. **Xavfsizlik:** Telethon seansini (StringSession) yaratish uchun biz sizdan API ID, API HASH va tasdiqlash kodini so'raymiz. "
+        "1. **Xavfsizlik:** Telethon seansini (StringSession) yaratish uchun biz sizdan faqat telefon raqamingiz va tasdiqlash kodini so'raymiz. "
         "Seans kaliti faqat serverda saqlanadi va faqat tagger buyrug'ini ishlatganingizda ishlaydi.\n"
         "2. **Guruhda tag qilish:** Istalgan guruhga qo'shiling, `/tagger` buyrug'ini va undan keyin xabaringizni yozing. Ulangan shaxsiy akkountingiz a'zolarni chaqirishni boshlaydi.\n"
         "3. **Spamdan himoya:** Akkountlar bloklanishining oldini olish uchun har bir tagger jarayoni orasida **60 soniyalik kutish vaqti (cooldown)** amal qiladi.\n"
@@ -339,19 +349,15 @@ def handle_add_account(message):
 
     with state_lock:
         login_states[user_id] = {
-            'step': 'WAITING_API_ID',
+            'step': 'WAITING_PHONE',
             'phone': None,
-            'api_id': None,
-            'api_hash': None,
             'client': None,
             'phone_code_hash': None
         }
         
     msg = (
         "📱 **Ko'p akkountli ulanish jarayoni** 📱\n\n"
-        "Telethon tizimini ishga tushirish uchun sizga shaxsiy API ma'lumotlari kerak bo'ladi.\n"
-        "Agar ular sizda bo'lmasa, https://my.telegram.org saytiga kirib yaratishingiz mumkin.\n\n"
-        "👉 Iltimos, **API ID** raqamini kiriting (faqat raqamlardan iborat bo'lishi kerak):"
+        "👉 Iltimos, **Telefon raqamingizni** xalqaro formatda yuboring (masalan: `+998901234567`):"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
@@ -394,33 +400,7 @@ def handle_login_inputs(message):
         )
         return
 
-    if step == 'WAITING_API_ID':
-        if not text.isdigit():
-            bot.reply_to(message, "❌ Noto'g'ri qiymat. API ID faqat raqamlardan iborat bo'lishi kerak. To'xtatish uchun `/cancel` yuboring:")
-            return
-        
-        with state_lock:
-            state['api_id'] = int(text)
-            state['step'] = 'WAITING_API_HASH'
-            
-        bot.reply_to(message, "✅ API ID saqlandi.\n\n👉 Endi, **API HASH** qiymatini yuboring:")
-        
-    elif step == 'WAITING_API_HASH':
-        if len(text) < 10:
-            bot.reply_to(message, "❌ API HASH formati noto'g'ri ko'rinadi. Iltimos, to'g'ri qiymat yuboring:")
-            return
-            
-        with state_lock:
-            state['api_hash'] = text
-            state['step'] = 'WAITING_PHONE'
-            
-        bot.reply_to(
-            message, 
-            "✅ API HASH saqlandi.\n\n👉 Endi, **Telefon raqamingizni** xalqaro formatda yuboring (masalan: `+998901234567`):", 
-            parse_mode="Markdown"
-        )
-        
-    elif step == 'WAITING_PHONE':
+    if step == 'WAITING_PHONE':
         if not (text.startswith('+') and text[1:].isdigit() and len(text) >= 8):
             bot.reply_to(
                 message, 
@@ -432,7 +412,7 @@ def handle_login_inputs(message):
         bot.reply_to(message, "⏳ Telegram serverlariga ulanish va tasdiqlash kodini so'rash jarayoni ketmoqda...")
         
         async def initiate_client_session():
-            client = TelegramClient(StringSession(), state['api_id'], state['api_hash'])
+            client = TelegramClient(StringSession(), TG_API_ID, TG_API_HASH)
             await client.connect()
             result = await client.send_code_request(phone)
             return client, result.phone_code_hash
@@ -507,8 +487,6 @@ def handle_login_inputs(message):
             db_save_account(
                 user_id=user_id,
                 phone=state['phone'],
-                api_id=state['api_id'],
-                api_hash=state['api_hash'],
                 session_string=session_str,
                 tg_acc_id=me.id,
                 tg_name=full_name,
@@ -568,8 +546,6 @@ def handle_login_inputs(message):
             db_save_account(
                 user_id=user_id,
                 phone=state['phone'],
-                api_id=state['api_id'],
-                api_hash=state['api_hash'],
                 session_string=session_str,
                 tg_acc_id=me.id,
                 tg_name=full_name,
@@ -687,7 +663,7 @@ def handle_accounts(message):
 # ==========================================
 
 async def async_run_tagger(user_id, chat_id, custom_message=""):
-    """Foydalanuvchi seansini yuklaydi va a'zolarni 5 tadan bo'lib tag qiladi."""
+    """Foydalanuvchi seansini yuklaydi va a'zolarni 5 tadan bo'lib tag qiladi (global API_ID va API_HASH dan foydalanadi)."""
     acc = db_get_account(user_id)
     if not acc:
         return "NO_ACCOUNT", None
@@ -704,7 +680,7 @@ async def async_run_tagger(user_id, chat_id, custom_message=""):
             client = None
             
     if not client:
-        client = TelegramClient(StringSession(acc['session_string']), acc['api_id'], acc['api_hash'])
+        client = TelegramClient(StringSession(acc['session_string']), TG_API_ID, TG_API_HASH)
         await client.connect()
         if not await client.is_user_authorized():
             return "EXPIRED", None
