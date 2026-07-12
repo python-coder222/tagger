@@ -352,96 +352,13 @@ FUNNY_TAG_PHRASES = [
     "qayerlarda sayr qilib yuribsan? 🚶‍♂️",
     "onlayn bo'lsang chiq, bo'lmasa keyin javob ber 😅",
     "guruh sensiz zerikib qoldi 🥱",
-    "faollik pasayib ketdi, biror narsa yoz! 📉",
+    "faollik pastlab ketti, biror narsa yoz! 📉😂",
     "sog'indik-ku, chiqib qol bir marta 🥺",
     "hazilakam chaqirdik, xafa bo'lma 😄",
-    "sinov uchun chaqirildi, tekshiruvdan o'ting ✅",
-    "imtihonga tayyormisan? 📚",
+    "sinov uchun chaqirildi, tekshiruvdan o'ting ✅😂",
+    "imtihonga tayyormisan, degandik 📚😏",
     "kim ekaningni eslatib qo'ysak dedik 🤔",
-    "500 kishidan biri aynan sen ekansan 🎉",
-    "bugun navbat senga ekan 😁",
-    "telefoning vibratsiya qilyaptimi? 📳",
-    "qani ovoz ber-chi 😄",
-    "yo'qolib ketganlar ro'yxatiga tushib qolma 😂",
-    "sen bo'lmasang qiziq emas ekan 😅",
-    "biz seni kutyapmiz! 🙃",
-    "bir ko'rinish berib ket 😎",
-    "hamma yig'ildi, seni kutyapmiz!",
-    "ko'rinib qo'y endi 😄",
-    "bir daqiqaga kirib ket!",
-    "signal senga yetib bordimi? 📡",
-    "shu yerga bir qarab qo'y 👀",
-    "bugungi mehmon sensan 😁",
-    "hamma seni chaqiryapti!",
-    "telefoningni yoqib ol 😅",
-    "bugun jim bo'lib qolibsan-ku 🤭",
-    "guruh seni esladi 😄",
-    "yo'qolgan topildi 😂",
-    "seni qidiruvga beramiz hozir 😆",
-    "hamma seni kutmoqda!",
-    "tezroq yetib kel!",
-    "o'zingni ko'rsatib qo'y 😎",
-    "bugungi faol bo'lish navbati senga!",
-    "bir salom yozib ket 😁",
-    "shu yerga bir kirib chiq!",
-    "hamma seni belgilayapti 😂",
-    "nima gap, jimjitlik-ku 🤨",
-    "senga maxsus chaqiriq!",
-    "bugun dam olish yo'q 😅",
-    "qayerdasan, qahramon? 🦸",
-    "sen uchun maxsus signal 🚨",
-    "uyg'onish vaqti keldi ⏰",
-    "uyqudan tur endi 😴",
-    "bir javob berib qo'y 😁",
-    "bir emoji tashab ket 😄",
-    "hamma seni sog'ingan shekilli 🥹",
-    "bir ko'rinib ket, iltimos 😄",
-    "telefoningni tekshir 📱",
-    "signal qabul qilindi 📶",
-    "kimdir seni esladi 😏",
-    "bugun navbatchi sensan 😂",
-    "shu yerda ekaningni bildir!",
-    "faollar safiga qayt!",
-    "jim turish taqiqlanadi 😁",
-    "hamma seni kutmoqda 😊",
-    "yozishni unutibsan shekilli 🤭",
-    "bir kulgili gap yozib yubor 😄",
-    "bizga qo'shil!",
-    "hamma shu yerda, sen qolib ketding 😅",
-    "qani, ovozingni eshitaylik!",
-    "bir belgi ber 😊",
-    "shu yerga kirib o't!",
-    "senga navbat keldi 😁",
-    "bugungi rekordchini kutyapmiz 😂",
-    "guruh faolligini oshir!",
-    "jim bo'lish rekordini yangilama 😆",
-    "bir daqiqa vaqt ajrat!",
-    "sen bo'lmasang bo'lmaydi!",
-    "tezroq ko'rinib qo'y 😄",
-    "bir xabar tashlab ket!",
-    "guruh seni chaqiryapti 📢",
-    "signal faqat senga yuborildi 😎",
-    "bugun omadli odamsan 🍀",
-    "seni esdan chiqarmadik 😁",
-    "hamma seni kuzatyapti 😂",
-    "biror narsa yozib yubor!",
-    "faollikni boshlaymizmi? 😄",
-    "bir salom yetarli 😊",
-    "bugungi vazifa: javob berish 😁",
-    "telefonni ushlab turgan bo'lsang javob ber 😆",
-    "hamma seni kutib qolgan 😄",
-    "guruhga qaytish vaqti keldi!",
-    "bugun seni tanladik 😂",
-    "qayerga g'oyib bo'lding? 🤔",
-    "bir daqiqa shu yerga qarab qo'y!",
-    "signalni o'tkazib yuborma 🚨",
-    "yana bir marta chaqiramiz 😁",
-    "endi javob berishga majbursan 😂",
-    "hamma seni tag qilyapti 😆",
-    "kel, suhbatni davom ettiramiz 😊",
-    "oxirgi ogohlantirish emas albatta 😂",
-    "bugungi kulgi uchun sen kerak 😄",
-    "endi bahona qabul qilinmaydi 😁"
+    "500 dan biri aynan sen ekansan, tabriklaymiz 🎉",
 ]
 
 FUNNY_INTROS = [
@@ -451,10 +368,6 @@ FUNNY_INTROS = [
     "📣 Barchaga tegishli xabar!",
     "🎯 Eshiting-chi, bu sizga!",
     "📌 Yangilik bor, diqqat bilan o'qing!",
-    "⚡ Hamma bir daqiqaga shu yerga!",
-    "👀 Qani, barchangiz shu tomonga qarang!",
-    "🔥 Faollarni yig'yapmiz, marhamat!",
-    "💬 Bir daqiqa e'tibor, muhim gap bor!"
 ]
 
 
@@ -484,6 +397,20 @@ def safe_send(chat_id, text, **kwargs):
 # Guruh bo'yicha oxirgi /tagger ishlatilgan vaqt (spamdan himoya)
 _last_tagger_use = {}
 
+# Guruh bo'yicha hozir ishlayotgan /tagger jarayonini to'xtatish uchun eventlar.
+# Kalit faqat jarayon davomida mavjud bo'ladi (boshlanganda qo'shiladi, tugaganda o'chiriladi).
+_active_cancel_events = {}
+
+
+def handle_cancel(message):
+    chat_id = message.chat.id
+    cancel_event = _active_cancel_events.get(chat_id)
+    if cancel_event and not cancel_event.is_set():
+        cancel_event.set()
+        bot.reply_to(message, "🛑 /tagger to'xtatildi. Qolgan userlarga xabar yuborilmaydi.")
+    else:
+        bot.reply_to(message, "Hozir to'xtatadigan hech qanday /tagger jarayoni yo'q.")
+
 
 def handle_tagger(message):
     chat_id = message.chat.id
@@ -505,6 +432,13 @@ def handle_tagger(message):
         )
         return
     _last_tagger_use[chat_id] = time.time()
+
+    if chat_id in _active_cancel_events and not _active_cancel_events[chat_id].is_set():
+        bot.reply_to(message, "⚠️ Bu guruhda allaqachon /tagger ishlayapti. Avval /cancel qiling yoki kuting.")
+        return
+
+    cancel_event = threading.Event()
+    _active_cancel_events[chat_id] = cancel_event
 
     # ---------- A'zolar ro'yxatini userbot orqali REAL-TIME olish ----------
     users = []
@@ -537,35 +471,53 @@ def handle_tagger(message):
         return
 
     total_tagged = 0
+    was_cancelled = False
 
-    if extra_text:
-        for chunk in chunk_list(users, CHUNK_SIZE):
-            mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
-            intro = random.choice(FUNNY_INTROS)
-            msg_text = f"{intro}\n\n{mentions}\n\n💬 <i>{extra_text}</i>"
-            if userbot_send(chat_id, msg_text):
-                total_tagged += len(chunk)
-            time.sleep(CHUNK_SEND_DELAY)
+    try:
+        if extra_text:
+            for chunk in chunk_list(users, CHUNK_SIZE):
+                if cancel_event.is_set():
+                    was_cancelled = True
+                    break
+                mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
+                intro = random.choice(FUNNY_INTROS)
+                msg_text = f"{intro}\n\n{mentions}\n\n💬 <i>{extra_text}</i>"
+                if userbot_send(chat_id, msg_text):
+                    total_tagged += len(chunk)
+                time.sleep(CHUNK_SEND_DELAY)
 
-    elif len(users) <= MAX_INDIVIDUAL_TAG:
-        for u in users:
-            phrase = random.choice(FUNNY_TAG_PHRASES)
-            msg_text = f"{mention_html(u)}, {phrase}"
-            if userbot_send(chat_id, msg_text):
-                total_tagged += 1
-            time.sleep(INDIVIDUAL_SEND_DELAY)
+        elif len(users) <= MAX_INDIVIDUAL_TAG:
+            for u in users:
+                if cancel_event.is_set():
+                    was_cancelled = True
+                    break
+                phrase = random.choice(FUNNY_TAG_PHRASES)
+                msg_text = f"{mention_html(u)}, {phrase}"
+                if userbot_send(chat_id, msg_text):
+                    total_tagged += 1
+                time.sleep(INDIVIDUAL_SEND_DELAY)
 
-    else:
-        for chunk in chunk_list(users, CHUNK_SIZE):
-            mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
-            phrase = random.choice(FUNNY_TAG_PHRASES)
-            msg_text = f"📢 Hammaga chaqiruv!\n\n{mentions}\n\n<i>({phrase})</i>"
-            if userbot_send(chat_id, msg_text):
-                total_tagged += len(chunk)
-            time.sleep(CHUNK_SEND_DELAY)
+        else:
+            for chunk in chunk_list(users, CHUNK_SIZE):
+                if cancel_event.is_set():
+                    was_cancelled = True
+                    break
+                mentions = "\n".join(f"👤 {mention_html(u)}" for u in chunk)
+                phrase = random.choice(FUNNY_TAG_PHRASES)
+                msg_text = f"📢 Hammaga chaqiruv!\n\n{mentions}\n\n<i>({phrase})</i>"
+                if userbot_send(chat_id, msg_text):
+                    total_tagged += len(chunk)
+                time.sleep(CHUNK_SEND_DELAY)
+    finally:
+        # Jarayon tugadi (yakunlandi yoki to'xtatildi) — kalitni tozalaymiz
+        _active_cancel_events.pop(chat_id, None)
 
     triggered_by = f"@{message.from_user.username}" if message.from_user.username else str(message.from_user.id)
-    log_tagger_use(chat_id, triggered_by, total_tagged, source=source)
+    source_label = f"{source}_cancelled" if was_cancelled else source
+    log_tagger_use(chat_id, triggered_by, total_tagged, source=source_label)
+
+    if was_cancelled:
+        bot.send_message(chat_id, f"🛑 To'xtatildi — jami {total_tagged} ta userga xabar yuborilgan edi.")
 
 
 def setup_bot_handlers():
@@ -580,7 +532,8 @@ def setup_bot_handlers():
             f"chaqirib chiqaman (tag xabarlari shaxsiy akkaunt nomidan yuboriladi).\n\n"
             f"⚙️ <b>Qanday ishlayman:</b>\n"
             f"• <code>/tagger</code> — guruhdagi barcha a'zolarni 5 tadan chaqiraman\n"
-            f"• <code>/tagger matningiz</code> — har bir chaqiruvga matningizni ham qo'shaman\n\n"
+            f"• <code>/tagger matningiz</code> — har bir chaqiruvga matningizni ham qo'shaman\n"
+            f"• <code>/cancel</code> — hozir ketayotgan /tagger jarayonini to'xtataman\n\n"
             f"Boshlash uchun meni guruhingizga qo'shing 👇"
         )
         markup = types.InlineKeyboardMarkup(row_width=1)
@@ -596,7 +549,8 @@ def setup_bot_handlers():
             "1️⃣ Meni (botni) guruhingizga qo'shing — buyruqlarni shu orqali eshitaman\n"
             "2️⃣ Shaxsiy (userbot) akkauntingiz ham o'sha guruhga a'zo bo'lishi kerak — "
             "tag xabarlari shu akkaunt nomidan yuboriladi\n"
-            "3️⃣ <code>/tagger</code> yoki <code>/tagger salom hammaga</code> deb yozing 🚀\n\n"
+            "3️⃣ <code>/tagger</code> yoki <code>/tagger salom hammaga</code> deb yozing 🚀\n"
+            "4️⃣ Kerak bo'lsa <code>/cancel</code> deb yozib, jarayonni to'xtatishingiz mumkin\n\n"
             "Userbot orqali guruhning TO'LIQ a'zolar ro'yxati olinadi — "
             "avval yozgan bo'lishlari shart emas."
         )
@@ -654,6 +608,8 @@ def setup_bot_handlers():
             cmd_base = message.text.split()[0].split("@")[0]
             if cmd_base == "/tagger":
                 handle_tagger(message)
+            elif cmd_base == "/cancel":
+                handle_cancel(message)
 
 
 def run_bot():
